@@ -1,10 +1,10 @@
-# Seg-XRes-CAM-23
+# Seg-XRes-CAM
 
 Code for Seg-XRes-CAM
 
 ## Instructions - For google colab:
 
-!git clone https://github.com/Nouman97/Seg-XRes-CAM.git
+!git clone https://github.com/Nouman97/Seg_XRes_CAM.git
 
 !pip3 install grad-cam
 
@@ -12,7 +12,7 @@ Code for Seg-XRes-CAM
 
 import os
 
-os.chdir('Seg-XRes-CAM-23')
+os.chdir('Seg_XRes_CAM')
 
 import torch
 from torchvision import transforms
