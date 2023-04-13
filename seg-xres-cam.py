@@ -13,8 +13,6 @@ import matplotlib
 #matplotlib.use('TkAgg') # Necessary to run matplotlib
 from tqdm import tqdm
 
-from pytorch_grad_cam import GradCAM, HiResCAM, ScoreCAM, GradCAMPlusPlus, AblationCAM, XGradCAM, EigenCAM, FullGrad
-from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
 import skimage
@@ -27,16 +25,6 @@ class TorchSegmentationWrapper(nn.Module):
         self.model = model
     def forward(self, x):
         return self.model(x)['out']
-
-class SemanticSegmentationTarget:
-    def __init__(self, category, mask):
-        self.category = category
-        self.mask = torch.from_numpy(mask)
-        if torch.cuda.is_available():
-            self.mask = self.mask.cuda()
-        
-    def __call__(self, model_output):
-        return (model_output[self.category, :, : ] * self.mask).sum()
 
 def vis_predict(image, model, preprocess_transform, DEVICE = 'cpu', mask = None, box = None, fig_name = None, vis = True):
     if preprocess_transform is None:
@@ -191,85 +179,6 @@ def rise_aggregated(image, masks, coef, fig_name = None, vis = True):
 
     return aggregated_mask, overlaid
 
-def seg_grad_cam_jacob(image, model, preprocess_transform, target = None, target_layer = None, box = None, DEVICE = 'cpu', method_index = 0, fig_base_name = None, fig_name = None, vis_base = True, vis = True, negative_gradient = False):
-    
-    if preprocess_transform is None:
-        input_tensor = image.clone()
-        image = image.permute(1, 2, 0).numpy()
-    else:
-        input_tensor = preprocess_transform(image)
-    
-    output = model(input_tensor.unsqueeze(0).to(DEVICE))
-
-    if box is None:
-        y_start, y_end, x_start, x_end = 0, image.shape[0], 0, image.shape[1]
-    else:
-        y_start, y_end, x_start, x_end = box[0], box[1], box[2], box[3]
-
-    if target is None:
-            target = output[0].argmax(0).max().item()
-
-    mask = output[0].argmax(0).detach().cpu().numpy()
-    mask_uint8 = 255 * np.uint8(mask == target)
-    mask_float = np.float32(mask == target)
-
-    mask_mask = np.zeros(mask_float.shape)
-    mask_mask[y_start:y_end, x_start:x_end] = 1
-    mask_float = mask_float * mask_mask
-    mask_uint8 = np.uint8(mask_uint8 * mask_mask)
-
-    target_layers = [target_layer]
-
-    if negative_gradient == True:
-        targets = [SemanticSegmentationTarget(target, -mask_float)]
-    else:
-        targets = [SemanticSegmentationTarget(target, mask_float)]
-
-    if method_index == 0:
-        cam = GradCAM(model = model, target_layers = target_layers, use_cuda = torch.cuda.is_available())
-    elif method_index == 1:
-        cam = HiResCAM(model = model, target_layers = target_layers, use_cuda = torch.cuda.is_available())
-    elif method_index == 2:
-        cam = GradCAMPlusPlus(model = model, target_layers = target_layers, use_cuda = torch.cuda.is_available())
-    grayscale_cam = cam(input_tensor = input_tensor.unsqueeze(0), targets = targets)[0, :]
-    overlaid = show_cam_on_image(image/255, grayscale_cam, use_rgb=True)
-
-    if method_index == 0:
-        title = 'Seg-Grad-CAM'
-    elif method_index == 1:
-        title = 'Seg-HiResCAM'
-    elif method_index == 2:
-        title = 'Seg-GradCAM++'
-
-    plt.figure()
-    plt.subplot(1, 2, 1)
-    plt.imshow(image)
-    plt.subplot(1, 2, 2)
-    plt.imshow(np.repeat(mask_uint8[:, :, None], 3, axis=-1))
-
-    if fig_base_name is not None:
-        plt.savefig(fig_name, bbox_inches = 'tight')
-    if vis_base is True:
-        plt.show()        
-    plt.close()
-
-    plt.figure()
-    plt.subplot(1, 3, 1)
-    plt.imshow(image)
-    plt.subplot(1, 3, 2)
-    plt.imshow(grayscale_cam)
-    plt.title(title)
-    plt.subplot(1, 3, 3)
-    plt.imshow(overlaid)
-
-    if fig_name is not None:
-        plt.savefig(fig_name, bbox_inches = 'tight')
-    if vis is True:
-        plt.show()
-    plt.close()
-    
-    return grayscale_cam, overlaid
-
 def save_grad(x, gradients):
      x.register_hook(lambda z: gradients.append(z))
 
@@ -379,3 +288,103 @@ def seg_grad_cam(image, model, preprocess_transform, target = None, target_layer
     handle_2.remove()
 
     return grayscale_cam, overlaid
+
+
+
+def utility_dilation(image, model, preprocess_transform, target = None, box = None, DEVICE = 'cpu', vis = True):
+  if preprocess_transform is None:
+          input_tensor = image.clone()
+          image = image.permute(1, 2, 0).numpy()
+          max_, min_ = image.max(), image.min()
+          image = np.uint8(255 * (image - min_) / (max_ - min_))
+  else:
+      input_tensor = preprocess_transform(image)
+
+  output = model(input_tensor.unsqueeze(0).to(DEVICE))
+
+  if box is None:
+      y_start, y_end, x_start, x_end = 0, image.shape[0], 0, image.shape[1]
+  else:
+      y_start, y_end, x_start, x_end = box[0], box[1], box[2], box[3]
+
+  if target is None:
+      target = output[0].argmax(0).max().item()
+
+  mask = output[0].argmax(0).detach().cpu().numpy()
+  mask_uint8 = 255 * np.uint8(mask == target)
+  mask_float = np.float32(mask == target)
+  mask_mask = np.zeros(mask_float.shape)
+  mask_mask[y_start:y_end, x_start:x_end] = 1
+  mask_float = mask_float * mask_mask
+  mask_uint8 = np.uint8(mask_uint8 * mask_mask)
+
+  plt.figure()
+  plt.subplot(1, 2, 1)
+  plt.imshow(image)
+  plt.subplot(1, 2, 2)
+  plt.imshow(np.repeat(mask_uint8[:, :, None], 3, axis=-1))
+  if vis is True:
+    plt.show()
+  plt.close()
+    
+  return image, mask_float
+
+def dc(result, reference, label):
+    result = result == label
+    reference = reference == label
+    #result = np.atleast_1d(result.astype(np.bool))
+    #reference = np.atleast_1d(reference.astype(np.bool))
+    intersection = np.count_nonzero(result & reference)
+    size_i1 = np.count_nonzero(result)
+    size_i2 = np.count_nonzero(reference)
+    dc = 2. * intersection / float(size_i1 + size_i2)
+    return dc
+
+def dilation(image, model, preprocess_transform, target = None, box = None, DEVICE = 'cpu',
+             mask = None, kernel_size = 5, threshold = 0.2, iterations = 100, original_prediction = None, skip_vis = 10):
+    dil_mask = mask.copy()  
+    dil_mask[dil_mask < threshold] = 0
+    dil_mask[dil_mask > threshold] = 1
+    images, masks = [], []
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+    for i in range(0, iterations):
+        dil_mask = cv2.dilate(dil_mask.astype(np.uint8), kernel, iterations = i)
+        if image.shape[0] <= 3:
+          im = image * dil_mask[None, :, :]
+        else:
+          im = image * dil_mask[:, :, None]
+        if i % skip_vis == 0:
+            vis = True
+        else:
+            vis = False
+        im_iter, mask_iter = utility_dilation(image = im, model = model, preprocess_transform = 
+                                              preprocess_transform, target = target, box = box, 
+                                              DEVICE = DEVICE, vis = vis)
+        images.append(im_iter)
+        masks.append(mask_iter)
+
+    
+    if box is None:
+        if image.shape[0] <= 3:
+            y_start, y_end, x_start, x_end = 0, image.shape[1], 0, image.shape[2]
+        else:
+            y_start, y_end, x_start, x_end = 0, image.shape[0], 0, image.shape[1]
+    else:
+        y_start, y_end, x_start, x_end = box[0], box[1], box[2], box[3]
+
+    mask_float = np.float32(original_prediction == target)
+    mask_mask = np.zeros(mask_float.shape)
+    print(y_start, y_end, x_start, x_end)
+    mask_mask[y_start:y_end, x_start:x_end] = 1
+    mask_float = mask_float * mask_mask
+
+    a = []
+    for i in masks:
+
+        print(dc(mask_float, i, 1))
+        a.append(dc(mask_float, i, 1))
+    
+    plt.figure()
+    plt.scatter(range(len(a)), a)
+    
+    return images, masks, a
