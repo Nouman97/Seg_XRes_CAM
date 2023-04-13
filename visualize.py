@@ -1,4 +1,5 @@
-from seg-xres-cam import vis_predict, seg_grad_cam, generate_masks, rise_segmentation, rise_aggregated
+from seg_xres_cam import vis_predict, seg_grad_cam, generate_masks, rise_segmentation, rise_aggregated
+import matplotlib.pyplot as plt
 
 def visualize_algos(image, model, preprocess_transform = None, target = None, 
                     target_layer = None, box = None, DEVICE = 'cpu', 
