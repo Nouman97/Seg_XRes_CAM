@@ -65,3 +65,6 @@ results_1_natural, results_masks_1 = visualize_algos(image, model, preprocess_tr
                     fig_size = fig_size, grid = grid)
 
 ```
+## Saliency Results
+
+![image](https://user-images.githubusercontent.com/127871419/226063304-87789063-5ea6-412b-83cc-ac11b95a02f9.png)
